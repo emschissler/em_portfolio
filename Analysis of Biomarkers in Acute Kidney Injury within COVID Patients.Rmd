@@ -1,0 +1,532 @@
+---
+title: "Analysis of Biomarkers in Acute Kidney Injury within COVID Patients"
+name: Em Schissler
+date: "2023-08-07"
+output:
+  slidy_presentation: default
+  ioslides_presentation: default
+---
+
+***
+
+## Background: Data
+
+### SOURCE
+- This data was collected from the The Clinical Proteomic Tumor Analysis Consortium (CPTAC) database which analyzes cancer biospecimens and is separated into three resources which include tumors, cancer genomics, and medical imaging. 
+
+- Our data comes from the The Cancer Imaging Archive (TCIA) which includes radiology imagining and clinical data for each patient. The clinical data includes diagnoses, procedures, lab tests, COVID-19 specific data values, etc which we will be using in our analysis. 
+
+  - https://datacatalog.med.nyu.edu/dataset/10109 
+  - https://wiki.cancerimagingarchive.net/pages/viewpage.action?pageId=89096912 
+
+### Libraries
+```{r}
+#Importing necessary libraries
+library(tidyverse) #for data transformation and visualization 
+library(dplyr) #for data tidying  
+library(ggplot2) #for plotting
+library("pastecs") #for calculating skewness
+library(RColorBrewer) #for more color options
+library(cowplot) #for combining plots
+library(car)# for Levene's test
+library(stats) #for Mann-Whitney test
+library(gtsummary) # for making regression model tables 
+```
+
+### Importing data 
+```{r, echo = TRUE}
+#Reading in the Stony Brook University data from patients who tested positive for COVID-19 Clinical Data 
+RAWCOVID <- read.csv("RAWCOVID.csv")
+#Showing first 4 rows to see variables
+head(RAWCOVID, n=4)
+```
+
+*** 
+
+## Background: Purpose of Analysis
+
+### Acute Kidney Injury (AKI)
+
+- Complex disorder which leads to direct damage of kidneys which can result in kidney failure, chronic kidney disease, or mortality. 
+- Inhibits kidney function and filtration leading to a build up of waste products in the blood.
+- Can occur in hospitalized patients (including COVID patients).
+
+### Importance 
+ 
+- Little progression in finding biomarkers to rapidly diagnose the presence or severity of the injury. 
+- Diagnoses rely on serum creatinine, urine output, and glomerular filtration rate (GFR) but they not sensitive in early detection. There are also debates about the accuracy of these variables.
+- Hard to predict outcome of injury. 
+
+### Analysis Question
+
+- This data set was chosen because it gives us a large selection of diagnostics to allow us to examine potential biomarkers and answer the question: What variables lead to COVID patients experiencing acute kidney injury during their hospitalization?
+- In our data set, acute kidney injury during hospitalization is defined as having an increase in serum creatinine of 0.3 mg/dL within 48 hours.
+- In our analysis, I chose a couple of variables (next slide) to see if any of them can be used to predict acute kidney injury in hospitalized COVID patients.
+
+***
+
+## Background: Selecting Variables
+
+Three numeric variables and one categorical variable were chosen to determine if they could predict acute kidney injury because literature indicates these are important metrics from kidney function:
+
+- Serum/Plasma Potassium Levels: Increased Potassium 
+
+  - Potassium comes from food sources and is very important for many body functions. The excess is taken from the blood and cleared by the kidney. When kidney function is impaired, potassium levels rise since the kidney cannot clear it out.  
+
+- Serum/Plasma Creatinine Levels: Increased Creatinine 
+
+  - Creatinine is a waste product that comes from food and muscle breakdown/turnover. This is cleared by the kidneys so when kidney function is impaired, there will be increased creatinine levels in blood.
+  - Acute kidney injury is measured by increased creatinine levels to see if kidneys are filtering blood properly.  
+
+- Serum/Plasma Glomerular Filtration Rate (GFR): Decreased GFR
+
+  - GFR is used to estimate kidney function by measuring the amount of plasma/serum filtered through the glomeruli in order to see how well they are filtering.
+  - We can estimate GFR based of levels off creatinine in blood. 
+  - GFR is inversely related to creatinine levels meaning acute kidney injury is associated with low GFR and higher creatinine.   
+
+- Smoking Status (Current/Former/Never) 
+
+  - We expect to see more current and former smokers that have acute kidney injury compared to patients who have never smoked.
+  - Smoking constricts blood flow and increases blood pressure. This can cause basal constriction of the renal artery flow, which can promote wear and tear on the kidney and the kidney's ability to filter blood. This can lead to acute kidney injury. In addition, studies show that nicotine can reduce GFR as well.  
+
+Acute kidney injury was classified as a categorical variable with two levels: Yes or No
+
+***
+
+## Methods: Cleaning and Organizing the Data
+
+### Filtering data set to only include relevant columns 
+```{r}
+#Identifying which variables we want to keep by name and number
+names(RAWCOVID)
+
+#Removing unwanted variables 
+KidneyData<-(RAWCOVID[,c(1,13, 30,116,120:121)])
+
+#Showing first 4 rows ensuring we have the right variables
+head(KidneyData, n=4)
+```
+
+### Making patient ID the row names instead of having them in a column 
+```{r}
+#Creating a new data set without the patient ID
+FinalKidneyData <- (KidneyData[,2:6])
+
+#Making the patient ID row names
+rownames(KidneyData)<- KidneyData[,1]
+
+#Making sure we have all the data we need
+head(FinalKidneyData)
+```
+
+### Renaming columns
+```{r}
+#Renaming long variable names
+FinalKidneyData <- rename(FinalKidneyData, "KidneyInjury"= Acute.Kidney.Injury..during.hospitalization., "Smoker" = smoking_status_v, "Potassium" = X2823.3_Potassium..Moles.volume..in.Serum.or.Plasma, "Creatinine" = X2160.0_Creatinine..Mass.volume..in.Serum.or.Plasma,"GFR" = X62238.1_Glomerular.filtration.rate.1.73.sq.M.predicted..Volume.Rate.Area..in.Serum..Plasma.or.Blood.by.Creatinine.based.formula..CKD.EPI.)
+
+#Making sure the column names were changed
+head(FinalKidneyData)
+```
+
+### Making categorical variables as factors for future steps 
+```{r}
+# 0 becomes Never, 1 becomes Former, 2 becomes Current 
+FinalKidneyData$Smoker <- factor(FinalKidneyData$Smoker,
+                                      levels = c("Never", "Former", "Current"))
+# 0 becomes No, 1 becomes Yes
+FinalKidneyData$KidneyInjury<-factor(FinalKidneyData$KidneyInjury, levels = c("No", "Yes"))
+```
+
+
+***
+
+## Methods: Dealing with Missing Values 
+
+In our data set, NA means they did not have data for that particular variable.
+
+### Counting NA values in each column
+```{r}
+#Creating an empty vector for the loop 
+missingvec <- c()
+
+#For loop that will cycle through each column and count the number of NA values in the specified column using sum(is.na())
+for (i in 1:5)
+{
+   nas<-sum(is.na(FinalKidneyData[[i]]))
+   NAs<- c(missingvec, nas)
+  print(c(colnames(FinalKidneyData[i]),NAs))
+ 
+}
+```
+Almost all of the columns have missing values.
+
+### Subsetting the kidney injury column into two data sets 
+```{r}
+#Using filter() to separate the patients with AKI and without AKI to analyze missing values and see how data would change
+KidneyInjury<-filter(FinalKidneyData, KidneyInjury == "Yes")
+NoInjury<-filter(FinalKidneyData, KidneyInjury == "No")
+```
+
+### Comparing acute kidney injury data sets with and without NA's
+```{r}
+#Omitting NAs from patients with acute kidney injury
+KIOmit <- na.omit(KidneyInjury)
+
+#[1] is the number of rows with NA's for the patients with AKI
+nrow(KidneyInjury)
+
+#[2] is the number of rows without NA's for the patients with AKI
+nrow(KIOmit)
+
+#[3] is the difference between rows with and without NA's for the patients with AKI
+nrow(KidneyInjury)-nrow(KIOmit)
+
+#Omitting NAs from patients without acute kidney injury
+NIOmit <- na.omit(NoInjury)
+
+#[4] is the number of rows with NA's for the patients without AKI
+nrow(NoInjury)
+
+#[5] is the number of rows without NA's for the patients with AKI
+nrow(NIOmit)
+
+#[6] is the difference between rows with and without NA's for the patients without AKI
+nrow(NoInjury)-nrow(NIOmit)
+```
+
+81 rows were omitted for patients with AKI and 445 rows were omitted for patients without AKI.
+
+Because in our data set NA means they did not have data for that particular variable, it wouldn't make sense to try to impute values.
+
+- Our data set is big so it is likely still a good sample. 
+
+***
+
+## Results: Visualizing Skewness
+
+### Histograms
+```{r}
+#Creating histogram plots of each numerical variable where the fill is "Kidney Injury"
+
+#Potassium histogram
+PHisto<-ggplot(FinalKidneyData, aes(x =Potassium, fill=KidneyInjury))+ 
+ geom_histogram(color = "black", size = .5)
+
+#Creatinine histogram
+CHisto<-ggplot(FinalKidneyData, aes(x =Creatinine, fill=KidneyInjury))+
+ geom_histogram(color = "black", size = .5) 
+
+#GFR histogram
+GHisto<-ggplot(FinalKidneyData, aes(x =GFR, fill=KidneyInjury))+
+ geom_histogram(color = "black", size = .5) 
+
+#This is a function from library(cowplot) that allows us to put all 3 graphs onto one image. Labels() assign each image A,B,C
+plot_grid(PHisto,CHisto,GHisto, labels = c("A", "B","C"))
+```
+
+We can see our potassium might be normally distributed for both groups but GFR is skewed towards the right in no acute kidney injury. Both groups are skewed to the left in creatinine. 
+
+### QQ plots
+```{r}
+#This par(mfrow()) puts all graphs in one image
+par(mfrow=c(1,3))
+
+##QQPlot for Potassium levels
+qqnorm(FinalKidneyData$Potassium, main= "Normal Q-Q Plot Potassium")
+#QQLine adds a straight line for reference of a theoretical normal distribution for potassium
+qqline(FinalKidneyData$Potassium)
+
+##QQPlot for Creatinine levels
+qqnorm(FinalKidneyData$Creatinine, main= "Normal Q-Q Plot Creatinine")
+#Straight line for reference of a theoretical normal distribution for creatinine
+qqline(FinalKidneyData$Creatinine)
+
+##QQPlot for Creatinine levels
+qqnorm(FinalKidneyData$GFR, main= "Normal Q-Q Plot GFR")
+#Straight line for reference of a theoretical normal distribution for GFR
+qqline(FinalKidneyData$GFR)
+```
+
+- Interestingly, these graphs suggest that our potassium and GFR are the closest to a normal distribution (they align to the straight line). 
+- In addition, this plot indicates that creatinine is skewed since it deviates in the middle. 
+
+### Shapiro-Wilk test 
+```{r}
+#Shapiro.test() checks normal distribution for a variable where a significant p value means non normal distribution
+
+#Potassium
+shapiro.test(FinalKidneyData$Potassium)
+
+#Creatinine
+shapiro.test(FinalKidneyData$Creatinine)
+
+#GFR
+shapiro.test(FinalKidneyData$GFR) 
+```
+
+This test indicates that all our data is not normally distributed since our W statistic is low and all our p values are "significantly" lower than 0.05. Therefore, we have to use non-parametric tests.
+
+- It is worthy to note that because we have a very large data set, it is more likely to give us a p <0.05 based on one outlier. 
+
+
+***
+
+## Results: Comparing Categorical Variables
+
+### Chi-Squared test
+```{r}
+#Testing if there is an association between patients having acute kidney injury and their smoking status 
+
+#Creating a table with both categorical variables
+KidneySmokerTable <- table(FinalKidneyData$KidneyInjury, FinalKidneyData$Smoker)
+#Printing table
+print(KidneySmokerTable)
+
+#Proportions of AKI by Smoker per row
+prop.table(KidneySmokerTable, 1)
+#Proportions of AKI by Smoker per column
+prop.table(KidneySmokerTable, 2)
+
+#Running a Pearson's Chi-squared test using chisq.test()
+chisq.test(FinalKidneyData$KidneyInjury, FinalKidneyData$Smoker)
+```
+
+We have a large X-squared value and a p-value lower than 0.05 indicating a statistically "significant" difference between the two categorical groups. This means they are likely associated with each other and they are not independent. 
+
+## Results: Visualization of Chi Square Test and Medians 
+
+We can use box plots to visualize the statistically different medians and add the categorical variable "smoking status" to see if there are any interesting conclusions.
+
+### New data frame
+All of our analysis besides this visualization automatically omits NAs. Therefore a new data frame is needed without NA's to make our box plot.
+```{r}
+#Creating a data frame without NA's for our box plot data
+BoxplotData<- na.omit(FinalKidneyData)
+```
+
+
+### Box plots
+```{r}
+#Using geom_boxplot to make the box plot and facet_wrap to see the difference in smoking status
+
+#Using scale_fill_brewer(breaks = 3,palette = "Dark2") to make graphs with color blind friendly palettes
+
+#Potassium box plot - for visual purposes I adjusted the y axis to zoom into the notches
+PNotch<-ggplot(BoxplotData, aes(x = KidneyInjury, y =Potassium, fill=Smoker))+ ylim(3, 5) + geom_boxplot(notch = TRUE) +facet_wrap(~Smoker) + scale_fill_brewer(palette = "Dark2")
+
+#Creatinine box plot
+CNotch<-ggplot(BoxplotData, aes(x = KidneyInjury, y =Creatinine, fill=Smoker))+ geom_boxplot(notch=TRUE) +facet_wrap(~Smoker) + ylim(0, 2) + scale_fill_brewer(palette = "Dark2")
+
+#GFR box plot
+GNotch<-ggplot(BoxplotData, aes(x = KidneyInjury, y =GFR, fill=Smoker))+ ylim(0, 150) + geom_boxplot(notch=TRUE) + facet_wrap(~Smoker) + scale_fill_brewer(palette = "Dark2")
+
+#This is a function from library(cowplot) that allows us to put all 3 graphs onto one image. Labels assign each image A,B,C
+plot_grid(PNotch,CNotch,GNotch,labels = c("A", "B","C"))
+```
+
+We can see here that none of the notches overlap, meaning the numerical variables have different medians.
+
+### Potassium
+- Current smokers without AKI had the highest median when compared to the other smoking statuses
+- Different than predicted:
+  - Current smokers with AKI had lower potassium median when compared to patients without AKI (opposite)
+  - Current smokers with AKI had the lowest median when compared to the other smoking statuses (former had the highest)
+
+#### Creatinine 
+- Current smokers with AKI have the higher medians when compared to patients without AKI and they have the highest median when compared to the other smoking statuses  
+ 
+#### GFR
+- Current smokers with AKI have the lower medians when compared to patients without AKI and they have the lowest median when compared to the other smoking statuses 
+
+***
+
+## Results: Median Analysis of Numerical Variables and AKI 
+
+We are doing a non-parametric test since our Shapiro Wilk test indicated we do not have a normal distribution in our numerical variables. This test will compare if the variables have statistically different medians. Our two AKI groups are unpaired (the patients are not measured before and after for our variables).
+
+### Mann-Whitney U test for numerical response variables:
+```{r}
+# Using library (stats) wilcox.test function for the calculation. Paired is set to false to make this a Mann-Whitney test
+
+#Potassium median between AKI groups 
+wilcox.test( FinalKidneyData$Potassium  ~ FinalKidneyData$KidneyInjury, paired = FALSE)
+
+#Creatinine median between AKI groups 
+wilcox.test( FinalKidneyData$Creatinine  ~ FinalKidneyData$KidneyInjury, paired = FALSE)
+
+#GFR median between AKI groups 
+wilcox.test( FinalKidneyData$GFR  ~ FinalKidneyData$KidneyInjury, paired = FALSE)
+```
+
+We got a statistically "significant" p-value for all of our numerical variables which suggests there is a difference between the medians of the potassium, creatinine, and GFR levels between patients with acute kidney injury and without. 
+
+### Visualizing the data
+Here we are seeing if the medians tend to be higher or lower in patients with acute kidney injury or not regardless of smoking status. 
+```{r}
+#Using geom_boxplot to make the box plot
+
+#Using scale_color_manual(values = brewer.pal(n = 3, name = "Dark2") to make graphs with color blind friendly palettes 
+
+#Potassium box plot
+Pplot<-ggplot(BoxplotData, aes(x = KidneyInjury, y =Potassium)) + geom_boxplot(aes(color = KidneyInjury)) + scale_color_manual(values = brewer.pal(n = 3, name = "Dark2"))
+
+#Creatinine box plot
+Cplot<-ggplot(BoxplotData, aes(x = KidneyInjury, y =Creatinine))+ylim(0,6) + geom_boxplot(aes(color = KidneyInjury)) + scale_color_manual(values = brewer.pal(n = 3, name = "Dark2"))
+
+#GFR box plot
+GFplot<-ggplot(BoxplotData, aes(x = KidneyInjury, y =GFR)) + geom_boxplot(aes(color = KidneyInjury)) + scale_color_manual(values = brewer.pal(n = 3, name = "Dark2"))
+
+#This is a function from library(cowplot) that allows us to put all 3 graphs onto one image. Labels assign each image A,B,C
+plot_grid(Pplot,Cplot,GFplot,labels = c("A", "B","C"))
+```
+
+We see that patients with AKI have higher medians in potassium and creatinine and lower medians in GFR compared to patients without AKI.
+
+***
+
+## Results: Regression 
+
+### GLM: logistic regression 
+
+We are using a General Linear Model logistic regression to see if there is an association or a significant relationship between our explanatory and outcome variables.  
+
+Our response/outcome variable (AKI) is binary (Yes, No) meaning they are governed by a binomial distribution.
+
+- All of are variables are being compared to patients that have never smoked (our base).
+```{r}
+#Using ref to make sure R assigned reference variables to patients who have never smoked 
+FinalKidneyData$Smoker <- relevel(FinalKidneyData$Smoker, ref = "Never")
+
+#Running a GLM using glm() to determine the relationships with "Kidney Injury" as the outcome
+GLMfit <- glm(KidneyInjury ~ Potassium + Creatinine + GFR + Smoker, data=FinalKidneyData, family=binomial(), na.action = na.omit)
+
+#Displaying the results
+summary(GLMfit) 
+```
+
+The only explanatory variable that showed to be "significantly" associated (p<0.001) is GFR.
+
+- Negative coefficient indicates negative effect and deviance values indicated the model is better than just the intercept.
+
+Our results can suggest that GFR levels can possibly tell us about whether or not patients have acute kidney injury during their hospitalization even after compensating for the effects of the other variables. 
+
+### Getting our odds ratio and our confident interval for each variable. 
+```{r}
+#Calculating odds ratio using exp and specifying we only want the coefficients
+GLModdsRatio <- exp(GLMfit$coefficients)
+GLModdsRatio
+
+#Calculating confidence intervals
+exp(confint(GLMfit))
+```
+
+The odd ratio of the smoking status, potassium, and creatinine predictors indicates these variables are positively associated with higher odds of acute kidney injury while GFR shows the opposite trend. All the confidence intervals besides GFR cross one meaning it is not "significant" and could raise or lower the odds.
+
+Here we create regression model table to summarize these results into a table to show the results.
+
+- Be sure to note that this table has the log of the Odds ratio and is a 95% CI. 
+
+```{r}
+#We use the tbl_regression from library(gtsummary) to create a table
+tbl_regression(GLMfit)
+```
+
+***
+
+## Discussion 
+
+All of the predictor variables could be independent biomarkers that may predict for acute kidney injury, but it is unclear if any of the predictor variables will be good biomarkers if you are taking into account the effects of other variables.
+
+- Smoking status is associated with predicting acute kidney injury (Pearson's Chi-squared test).
+
+- Potassium, creatinine and GFR are associated with predicting acute kidney injury (Mann-Whitney U Test).
+
+  - Difference in medians of numerical levels between patients with acute kidney injury and without.
+  
+  - Patients with acute kidney injury have higher potassium and creatinine levels and lower GFR levels compared to patients without acute kidney injury.
+  
+- No clear pattern when comparing smoking status and potassium, creatinine and GFR levels to see if they predict acute kidney injury.
+
+  - We predicted current smokers would have the highest potassium and creatinine levels and the lowest GFR levels.
+
+- General logistical regression indicates GFR is associated with having or not having acute kidney injury after compensating for the effects of the other variables.
+
+  - Possible insignificance or a bad model fit
+
+*** 
+ 
+## Future Directions 
+
+### Variables
+
+- Exploring GFR level thresholds and how it's associated with having or not having AKI
+
+- Investigate other variables (ex: Blood Urea Nitrogen (BUN) and Age)
+
+  - Other diseases or medical conditions (ex. Blockage of the urinary tract)
+  
+- Choose variables that are not closely related (GFR and creatinine might be too closely related)
+
+
+### Data 
+
+- Splitting patients in different groups
+
+  - Hospitalized vs Non Hospitalized
+  
+  - COVID vs no COVID
+  
+  - Diagnostics before and after 
+  
+- Try to find alternatives that do not require omitting the NAs
+
+- Using specific data meant for studying AKI or kidney related conditions 
+
+*** 
+
+## References 
+
+### Original data
+
+- Clark K, Vendt B, Smith K, Freymann J, Kirby J, Koppel P, Moore S, Phillips S, Maffitt D, Pringle M, Tarbox L, Prior F. The Cancer Imaging Archive (TCIA): Maintaining and Operating a Public Information Repository, Journal of Digital Imaging, Volume 26, Number 6, December, 2013, pp 1045-1057. DOI: 10.1007/s10278-013-9622-7
+
+- Saltz, J., Saltz, M., Prasanna, P., Moffitt, R., Hajagos, J., Bremer, E., Balsamo, J., & Kurc, T. (2021). Stony Brook University COVID-19 Positive Cases [Data set]. The Cancer Imaging Archive. https://doi.org/10.7937/TCIA.BBAG-2923
+
+### Other
+
+Compiled from websites with the help of Zotoro
+
+- American Kidney Fund. “Acute Kidney Injury (AKI),” April 12, 2022. https://www.kidneyfund.org/all-about-kidneys/other-kidney-problems/acute-kidney-injury-aki.
+
+- American Kidney Fund. “High Potassium (Hyperkalemia): Causes, Prevention and Treatment,” July 31, 2023. https://www.kidneyfund.org/living-kidney-disease/health-problems-caused-kidney-disease/high-potassium-hyperkalemia-causes-prevention-and-treatment.
+
+- Fresenius Kidney Care. “Understanding the Risks of Smoking and Kidney Disease.” Accessed August 8, 2023. https://www.freseniuskidneycare.com/thrive-central/understanding-risk-of-smoking-and-kidney-disease.
+
+- Kabacoff, Robert. “Quick-R: Generalized Linear Models.” Quick R by datacamp, 2017. https://www.statmethods.net/advstats/glm.html.
+
+- Mano, Lokesh. “Combining Plots.” NBIS Workshop on ggplot, November 27, 2020. https://nbisweden.github.io/Workshop_geneco_2020_05/docs/lab_gg_4.html.
+
+- Molitoris BA. Measuring glomerular filtration rate in acute kidney injury: yes, but not yet. Crit Care. 2012 Sep 24;16(5):158. doi: 10.1186/cc11482. PMID: 23014799; PMCID: PMC3682250.
+
+- National Kidney Foundation. “Acute Kidney Injury (AKI).” Accessed August 8, 2023. https://www.kidney.org/atoz/content/AcuteKidneyInjury.
+
+- National Kidney Foundation. “Estimated Glomerular Filtration Rate (EGFR) | National Kidney Foundation.” Accessed August 7, 2023. https://www.kidney.org/atoz/content/gfr.
+
+- National Kidney Foundation. “Know Your Kidney Numbers: Two Simple Tests.” Accessed August 8, 2023. https://www.kidney.org/atoz/content/know-your-kidney-numbers-two-simple-tests.
+
+- National Kidney Foundation. “Potassium | National Kidney Foundation.” Accessed August 8, 2023. https://www.kidney.org/atoz/content/about-potassium.
+
+- National Kidney Foundation. “Smoking and Your Health.” Accessed August 8, 2023. https://www.kidney.org/atoz/content/smoking.
+
+- National Kidney Foundation. “Understanding Your Lab Values.” Accessed August 8, 2023.
+https://www.kidney.org/atoz/content/understanding-your-lab-values.
+
+- Sjoberg DD, Whiting K, Curry M, Lavery JA, Larmarange J. Reproducible summary tables with the gtsummary package.The R Journal 2021;13:570–80. https://doi.org/10.32614/RJ-2021-053.
+
+- Wu C-C, Wang H-E, Liu Y-C, Zheng C-M, Chu P, Lu K-C, Chu C-M and Chang Y-T (2021) Sleeping, Smoking, and Kidney Diseases: Evidence From the NHANES 2017–2018. Front. Med. 8:745006. doi: 10.3389/fmed.2021.745006
+
+
+
+
+
+
