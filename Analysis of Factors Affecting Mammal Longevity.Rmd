@@ -3,8 +3,9 @@ title: "Schissler Final Project"
 author: "Em Schissler"
 date: "4/9/2021"
 output:
-  word_document: default
   html_document: default
+  pdf_document: default
+  word_document: default
 ---
 ## Background
 
@@ -169,7 +170,7 @@ ggplot()+
 
 **Figure 1**: Scatter plot measuring average lifespan (years) compared with diet (Carnivore, Herbivore, Omnivore) and average mass (g). Regression lines are shown and color-coded according to diet (n=225, n=75 per diet category). Data provided by Animal Diversity Web.
 
-##Comparing datasets to see the proportion of each diet group in mammals are the same.
+## Comparing datasets to see the proportion of each diet group in mammals are the same.
 
 For this next step, we compared the proportion of each diet in mammals from the MammalDiet dataset and Animal Diversity Website dateset to see if the proprtions were the same. 
 
@@ -216,7 +217,7 @@ C=0.31
 O=0.36
 H=0.33
 
-##Chi-Square Goodness of Fit Test
+## Chi-Square Goodness of Fit Test
 
 The Chi-Square Goodness of Fit Test was conducted to determine if the observed proportions matched the expected proportions. 
 
@@ -233,7 +234,7 @@ chi.results <- chisq.test(observed, p = expected / sum(expected))
 print(chi.results)
 
 ```
-#Table 
+# Table 
 ```{r}
 # Observed and expected frequencies
 observed_freq <-c(0.32,0.16,0.50)
@@ -248,7 +249,7 @@ print(mammalpropDATA)
 
 A group bar plot was created to visually represent the difference in frequencies between groups categorized by diet.
 
-#Group Bar Plot
+# Group Bar Plot
 ```{r}
 library(ggplot2)
 ggplot()+
@@ -263,13 +264,13 @@ ylab("Frequency")
 In the second analysis, the Chi-Square Goodness of Fit test indicates that the observed proportions in the ADW data differ significantly from the expected proportions based on the MammalDIET data (χ² = 93.46, df = 2, p-value = 2.2e-16). This discrepancy suggests that the proportions of diet categories in the ADW data are not as expected: the proportion of herbivores is much higher than predicted, while the proportion of omnivores is much lower (Table 1, Figure 5). It is also important to note that the critical χ² value for df = 2 is 5.99, and the observed χ² value far exceeds this threshold, resulting in a very small p-value.
 
 
-##Conclusion
+## Conclusion
 My general linear model supported my biological hypothesis, indicating that average body mass and diet significantly impact mammal lifespan, explaining 42.57% of the variability. However, the assumptions for the GLM were not met, and the Animal Diversity Web (ADW) dataset, which was not proportionate to the larger MammalDIET dataset, might not be a representative sample. The ADW dataset's overrepresentation of herbivores could have skewed results, as herbivores showed the longest lifespans, but the significant difference between datasets suggests that the ADW data may not accurately reflect mammalian diets (Figures 4 & 5, Table 1).
 
 Despite the GLM's significant results, the data did not meet the assumptions for normality and equal variance, which could affect the conclusions. The ADW dataset's smaller sample size and non-representative nature, coupled with potential biases, highlight limitations. Future research should consider using more balanced datasets and exploring factors beyond body mass and diet, including predation and environmental influences. This study could inform conservation efforts and animal care practices by providing insights into factors affecting longevity, challenging media claims about weight and diet, and suggesting directions for broader research, including non-mammalian vertebrates and specific dietary components.
 
 
-##Bibliography 
+## Bibliography 
 Animal Diversity Web. Quaardvark. 2013. University of Michigan Museum of Zoology. https://animaldiversity.ummz.umich.edu/quaardvark/search/1E37C501-393E-0001-32B7-2A6014F113B8/?start=1. 
 
 Ebert T. 2008. Longevity and lack of senescence in the red sea urchin Strongylocentrotus franciscanus. Exp Gerontol: 43(8):734-8. 
