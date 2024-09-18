@@ -1,0 +1,289 @@
+---
+title: "Analysis of Factors Affecting Mammal Longevity"
+author: "Em Schissler"
+date: "4/9/2021"
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+---
+## Background
+
+Previous studies have aimed to determine the factors contributing to animal longevity. These factors have included size, metabolism, weight, predation, environment, and diet. However, the definitive factors of longevity remain unknown, and the general pattern of heavier animals living longer has been questioned as the sole determinant of increased lifespan, given the exceptions to this rule within the Animal Kingdom (Ebert, 2008). Additionally, there has been debate over whether animals with a strictly plant-based diet, a strictly meat-based diet, or a combination of both have an increased average lifespan, due to the varying nutritional benefits different foods provide (Wilder et al., 2013).
+
+In this project, we will analyze two datasets. First, I will investigate whether a combination of diet and body mass impacts the average lifespan of mammals using Animal Diversity Web (ADW) data. To further validate the data and results, I will compare the ADW data with the MammalDIET data to determine if the proportion of each diet group is consistent across both datasets, thereby assessing if the ADW sample is representative.
+
+The hypothesis is that increased body mass and a specific diet result in higher average lifespans when combined, as some of the longest-living mammals on the planet have diets consisting of plants (herbivores/omnivores) and possess the largest body mass within the class Mammalia. We will test whether there is a difference in the mean lifespan of mammals across at least one of three diet groups, whether there is an association between mean body mass and mean lifespan of mammals, and whether the effect of diet on mammal longevity depends on the average body mass. Additionally, we will examine the interaction between diet and average body mass.
+
+
+## Open the Dataset
+
+Down below I imported data from the CSV file FinalMammalData into an R data frame (mammal.data). 
+```{r}
+mammal.data <- read.csv("FinalMammalData.csv", header=T)
+print(mammal.data)
+```
+
+## Preliminary Analyses
+**Visualizations Scatterplot and Histogram**
+The data was tested for normality within each treatment group by plotting the original data on a scatter plot and adding histograms of both variables to the graph.
+
+```{r}
+library(ggExtra)
+library(ggplot2)
+plot1<-ggplot()+
+  geom_point(data=mammal.data, aes(x=AvgMass, y=Lifespan, color=Diet))+
+  theme_bw()+
+  xlab("Average Mass (g)")+
+  ylab("Average Lifespan (years)")+
+  labs(title=paste("Raw Data"))
+
+
+print(plot1)
+```
+
+```{r}
+ggMarginal(plot1, type = "histogram",
+           xparams = list(binwidth =55000, fill = "orange"),
+           yparams = list(binwidth = 1, fill = "turquoise"),
+           data=mammal.data)
+```
+
+
+**Transformations of the Data**
+The initial data showed non-normal distributions, with the average mass data being right-skewed. To address this, a log transformation was applied to the average mass, and a square root transformation was used for the count data of average lifespan. After applying these transformations, the data was plotted again to visually assess whether it appeared more normally distributed within each treatment group.
+
+```{r}
+mammal.data$Mass.tr <- log(mammal.data$AvgMass)
+mammal.data$Lifespan.tr <- sqrt(mammal.data$Lifespan + 0.5)
+```
+
+## New Scatter plots and Histograms after Transformation
+
+```{r}
+library(ggExtra)
+library(ggplot2)
+plot2<-ggplot()+
+  geom_point(data=mammal.data, aes(x=Mass.tr, y=Lifespan.tr, color=Diet))+
+  theme_bw()+
+  xlab("Average Mass (g)")+
+  ylab("Average Lifespan (years)")+
+  labs(title=paste("Transformed Data")) 
+
+
+print(plot2)
+```
+
+```{r}
+ggMarginal(plot2, type = "histogram",
+           xparams = list(binwidth = 0.25, fill = "orange"),
+           yparams = list(binwidth = 0.1, fill = "turquoise"),
+           data=mammal.data)
+```
+
+**Reassigning Variables for Each Diet Category**
+
+Below, each original diet category (Carnivore, Omnivore, and Herbivore) was assgined their own variable so each diet category could be individually tested for normal distributions and equal variance within their data.  
+
+```{r}
+carnivore <- subset(mammal.data, Diet == "Carnivore ")
+omnivore <- subset(mammal.data, Diet == "Omnivore")
+herbivore <- subset(mammal.data, Diet == "Herbivore")
+```
+
+**Regression normality test (Sharpio-Wilk)** 
+
+Here, I conducted a test for normality on the average lifespan and average body mass variables for each diet dataset. 
+
+```{r}
+
+shapiro.test(carnivore$Mass.tr)
+shapiro.test(omnivore$Mass.tr)
+shapiro.test(herbivore$Mass.tr) 
+
+shapiro.test(carnivore$Lifespan.tr)
+shapiro.test(omnivore$Lifespan.tr)
+shapiro.test(herbivore$Lifespan.tr)
+
+```
+
+**Levene's Test** 
+
+Down below, I then tested the assumption that the variances are equal within each diet to make sure that variance of mass and average lifespan is not higher in one diet group compared to the others.
+
+```{r}
+#install.packages("lawstat")
+library(lawstat)
+
+levene.test(carnivore$Lifespan.tr, carnivore$Mass.tr)
+
+levene.test(omnivore$Lifespan.tr, omnivore$Mass.tr)
+
+levene.test(herbivore$Lifespan.tr, herbivore$Mass.tr)
+
+
+```
+
+Although the variances were not equal and the data did not meet the criteria for normality, the general linear model test was conducted with approval from my professor. It is important to note that with a large sample size (n=225, with 75 per diet group), it can be challenging to achieve normality.
+ 
+## General Linear Model Test
+
+Down below, the general linear model test was conducted to determine if the variables are associated with one another and to see if there is an interaction between the two explanatory variables. 
+
+```{r}
+glm.results<-lm(Lifespan.tr ~ Diet + Mass.tr +Diet:Mass.tr, data=mammal.data)
+summary(glm.results)
+```
+
+**Results**
+
+The general linear model results are significant, with a p-value of 2.2e-16. The explanatory variables—average body mass and diet—account for 42.57% of the variability in average lifespan, which is substantial given the complexity of factors influencing longevity.
+
+*Diet (Carnivore, Herbivore, Omnivore) - Categorical Explanatory Variable*
+
+The model rejects the null hypothesis, indicating significant differences in mean lifespan among the diet groups. Specifically, there is a mean difference of -1.52115 between carnivores and herbivores (p-value 0.004723), and -1.71394 between carnivores and omnivores (p-value 0.000554)
+
+*Body Mass - Numerical Explanatory Variable*
+
+The analysis reveals a positive association between mean body mass and mean lifespan, with each additional year of lifespan corresponding to a 0.21978 unit increase in body mass on average. This relationship is statistically significant (p-value 1.54e-10).
+
+*Diet x Body - Interaction between Explanatory Variables*
+
+The model identifies a significant interaction between diet and average body mass. This interaction is evident in the graphical representation (Figure 1), as the lines are not parallel. Specifically, there is an interaction when comparing carnivores to herbivores (0.12483, p-value 0.024273) and carnivores to omnivores (0.19139, p-value 0.002757).
+
+## General Linear Model Scatter plot with 2 Explanatory Variables & Regression Line
+
+Down below the results of the general linear model test on were plotted on a scatter plot with regression lines. 
+
+```{r}
+library(ggplot2)
+ggplot()+
+  geom_point(data=mammal.data, aes(x=Mass.tr, y=Lifespan.tr, color=Diet))+
+  geom_smooth(data=mammal.data, aes(x=Mass.tr, y=Lifespan.tr, color=Diet), method="lm", se=F)+
+  theme_bw()+
+  xlab("Average Mass (g)")+
+  ylab("Average Lifespan (years)")+
+  labs(title=paste("The Effect of Average Mass and Diet on Average Lifespan in Mammals"))
+
+
+```
+
+**Figure 1**: Scatter plot measuring average lifespan (years) compared with diet (Carnivore, Herbivore, Omnivore) and average mass (g). Regression lines are shown and color-coded according to diet (n=225, n=75 per diet category). Data provided by Animal Diversity Web.
+
+## Comparing datasets to see the proportion of each diet group in mammals are the same.
+
+For this next step, we compared the proportion of each diet in mammals from the MammalDiet dataset and Animal Diversity Website dateset to see if the proprtions were the same. 
+
+## Open the Second Dataset
+• Download the full dataset here:  
+
+Down below the dataset csv titles were changed to ADWdiet.data and mammalDIET.data respectfully
+
+```{r}
+ADWdiet.data <- read.csv("FinalADWMammal.csv", header=T)
+head(ADWdiet.data)
+mammalDIET.data <- read.csv("FinalMammalDIET.csv", header=T)
+head(mammalDIET.data)
+```
+
+The necessary packages, tidyverse and dplyr, were installed in order to be able to count how many of each diet group there are in each dataset.
+
+```{r}
+#install.packages("tidyverse")
+```
+
+```{r}
+#install.packages("dplyr")
+```
+
+The proportions of the observed and expected vector were calculated using the count() function. 
+```{r}
+library(tidyverse)
+ADWdiet.data %>% count(Diet)
+mammalDIET.data %>% count(Diet)
+```
+
+From this we see that the following proportions for the observed (ADW = 608) and the expected (MammalDIET = 5351). C=Carnivore, O=Omnivore, and H=Herbivore.
+
+ADW:
+
+C=0.32
+O=0.16
+H=0.50
+
+MammalDIET:
+
+C=0.31
+O=0.36
+H=0.33
+
+## Chi-Square Goodness of Fit Test
+
+The Chi-Square Goodness of Fit Test was conducted to determine if the observed proportions matched the expected proportions. 
+
+Below, the values needed to calculate the chi-square test were assigned variables and the results were visually represented in a table with with frequency, diet, and group, as the variables.
+
+
+```{r}
+# Observed and expected counts
+observed <- c(200, 98, 310)  # Carnivores, Omnivores, Herbivores
+expected <- c(1637, 1788, 1926)
+
+# Perform Chi-squared test
+chi.results <- chisq.test(observed, p = expected / sum(expected))
+print(chi.results)
+
+```
+# Table 
+```{r}
+# Observed and expected frequencies
+observed_freq <-c(0.32,0.16,0.50)
+expected_freq<- c(0.31, 0.36, 0.33)
+
+#Creating a dataframe with the values
+mammalpropDATA <- data.frame(frequency = c(observed_freq, expected_freq))
+mammalpropDATA$Diet <- c("Carnivore", "Omnivore", "Herbivore","Carnivore","Omnivore", "Herbivore")
+mammalpropDATA$Group <- c("Observed", "Observed", "Observed","Expected", "Expected", "Expected")
+print(mammalpropDATA)
+```
+
+A group bar plot was created to visually represent the difference in frequencies between groups categorized by diet.
+
+# Group Bar Plot
+```{r}
+library(ggplot2)
+ggplot()+
+geom_bar(data=mammalpropDATA, aes(x=Diet, y=frequency, fill=Group), stat="identity", position="dodge")+
+theme_bw(base_size=16)+
+ylab("Frequency")
+
+```
+**Figure 2.** Group Bar Graph comparing the frequency of each diet group (Carnivore, Omnivore, Herbivore) between the observed ADW data values and the expected ADW data values if the proportions matched the MammalDIET data proportions. Data provided by Animal Diversity Web and Kissling, W.D. et al.
+
+
+In the second analysis, the Chi-Square Goodness of Fit test indicates that the observed proportions in the ADW data differ significantly from the expected proportions based on the MammalDIET data (χ² = 93.46, df = 2, p-value = 2.2e-16). This discrepancy suggests that the proportions of diet categories in the ADW data are not as expected: the proportion of herbivores is much higher than predicted, while the proportion of omnivores is much lower (Table 1, Figure 5). It is also important to note that the critical χ² value for df = 2 is 5.99, and the observed χ² value far exceeds this threshold, resulting in a very small p-value.
+
+
+## Conclusion
+My general linear model supported my biological hypothesis, indicating that average body mass and diet significantly impact mammal lifespan, explaining 42.57% of the variability. However, the assumptions for the GLM were not met, and the Animal Diversity Web (ADW) dataset, which was not proportionate to the larger MammalDIET dataset, might not be a representative sample. The ADW dataset's overrepresentation of herbivores could have skewed results, as herbivores showed the longest lifespans, but the significant difference between datasets suggests that the ADW data may not accurately reflect mammalian diets (Figures 4 & 5, Table 1).
+
+Despite the GLM's significant results, the data did not meet the assumptions for normality and equal variance, which could affect the conclusions. The ADW dataset's smaller sample size and non-representative nature, coupled with potential biases, highlight limitations. Future research should consider using more balanced datasets and exploring factors beyond body mass and diet, including predation and environmental influences. This study could inform conservation efforts and animal care practices by providing insights into factors affecting longevity, challenging media claims about weight and diet, and suggesting directions for broader research, including non-mammalian vertebrates and specific dietary components.
+
+
+## Bibliography 
+Animal Diversity Web. Quaardvark. 2013. University of Michigan Museum of Zoology. https://animaldiversity.ummz.umich.edu/quaardvark/search/1E37C501-393E-0001-32B7-2A6014F113B8/?start=1. 
+
+Ebert T. 2008. Longevity and lack of senescence in the red sea urchin Strongylocentrotus franciscanus. Exp Gerontol: 43(8):734-8. 
+
+Kissling WD, Dalby L, Fløjgaard C, Lenoir J, Sandel B, Sandom C, Trøjelsgaard K, Svenning J-C. 2014.  Establishing macroecological trait datasets: digitalization, extrapolation, and validation of diet preferences in terrestrial mammals worldwide. Dryad Digital Repository. doi: 10.5061/dryad.6cd0v. 
+Price S, Hopkins S. 2015. The macroevolutionary relationship between diet and body mass across mammals.  Biological Journal of the Linnean Society: 115(1):173–184. https://doi.org/10.1111/bij.12495. 
+
+Speakman J. 2005. Body size, energy metabolism and lifespan. Lifespan, Reproduction And Ecology. J Exp Biol 208 (9): 1717–1730.
+
+Wilder M, Le Couteur D, Simpson S. 2013. Diet mediates the relationship between longevity and reproduction in mammals. Age (Dordr),: 35(3): 921–927.
+
+
+
+
+ 
+  
