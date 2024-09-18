@@ -64,6 +64,3 @@ This repository contains a complete RNA-seq pipeline for identifying differentia
 
 Feel free to explore each repository and view the projects in detail. If you have any questions or would like to discuss the projects further, don't hesitate to reach out!
 
----
-
-This structure ensures correct indentation, bolding, and styling for GitHub's Markdown. Let me know if any additional tweaks are needed!
